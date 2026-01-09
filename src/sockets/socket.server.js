@@ -1,6 +1,6 @@
 const { Server } = require("socket.io");
-const authenticateSocket = require("./middlewares/auth.socket")
-
+const authenticateSocket = require("./middlewares/auth.socket");
+const generateResponse = require("../services/ai.service");
 // socket server
 
 const initSocketServer = (httpServer) => {
@@ -8,10 +8,17 @@ const initSocketServer = (httpServer) => {
     /* options */
   });
 
-  io.use(authenticateSocket)
+  io.use(authenticateSocket);
 
   io.on("connection", (socket) => {
-    console.log("Socket Server connected");
+    socket.on("ai-message", async (data) => {
+      const response = await generateResponse(data.content);
+
+      socket.emit("ai-response", {
+        chat: data.chat,
+        content: response,
+      });
+    });
     socket.on("disconnect", () => {
       console.log("Socket Server disconnected");
     });
