@@ -21,8 +21,18 @@ const initSocketServer = (httpServer) => {
         role: "user",
       });
 
+      // fetch chat history
+      const chatHistory = (await messageModel.find({
+        chat: data.chat,
+      }).sort({createdAt: -1}).limit(20).lean()).reverse();
+
       // generate AI response
-      const response = await generateResponse(data.content);
+      const response = await generateResponse(chatHistory.map(msg=>{
+        return{
+          role:msg.role,
+          parts:[{text:msg.content}]
+        }
+      }));
 
       // store ai response
       await messageModel.create({
