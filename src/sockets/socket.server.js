@@ -56,15 +56,27 @@ const initSocketServer = (httpServer) => {
           .lean()
       ).reverse();
 
+      const stm = chatHistory.map((msg) => {
+        return {
+          role: msg.role,
+          parts: [{ text: msg.content }],
+        };
+      });
+
+      const ltm = [
+        {
+          role: "user",
+          parts: [
+            {
+              text: `This is relevant context from previous conversations:
+                ${memory.map((m) => m.metadata.message).join(" \n ")}`,
+            },
+          ],
+        },
+      ];
+
       // generate AI response
-      const response = await generateResponse(
-        chatHistory.map((msg) => {
-          return {
-            role: msg.role,
-            parts: [{ text: msg.content }],
-          };
-        })
-      );
+      const response = await generateResponse([...ltm, ...stm]);
 
       // store ai response
       const aiMessage = await messageModel.create({
