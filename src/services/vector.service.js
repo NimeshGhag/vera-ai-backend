@@ -6,3 +6,15 @@ const pc = new Pinecone({ apiKey: process.env.VERA_PINECONE_API_KEY });
 
 // Access the specific index using the name from environment variables
 const veraIndex = pc.Index(process.env.VECTOR_INDEX_NAME);
+
+const createMemory = async ({ vector, messageId, metadata }) => {
+  await veraIndex.upsert([
+    {
+      id: messageId,
+      values: vector,
+      metadata: metadata,
+    },
+  ]);
+};
+
+module.exports = { createMemory };

@@ -1,7 +1,8 @@
 const { Server } = require("socket.io");
 const authenticateSocket = require("./middlewares/auth.socket");
-const generateResponse = require("../services/ai.service");
+const { generateResponse, generateVectors } = require("../services/ai.service");
 const messageModel = require("../models/message.model");
+const { createMemory } = require("../services/vector.service");
 
 // socket server
 const initSocketServer = (httpServer) => {
@@ -13,13 +14,26 @@ const initSocketServer = (httpServer) => {
 
   io.on("connection", (socket) => {
     socket.on("ai-message", async (data) => {
-      const vectors = await generateVectors(data.content);
       // store user message
-      await messageModel.create({
+      const message = await messageModel.create({
         chat: data.chat,
         user: socket.user._id,
         content: data.content,
         role: "user",
+      });
+
+      // generate vectors
+      const vectors = await generateVectors(data.content);
+
+      // create memory
+      await createMemory({
+        vector: vectors,
+        messageId: message._id,
+        metadata: {
+          chatId: data.chat,
+          userId: socket.user._id,
+          message: data.content,
+        },
       });
 
       // fetch chat history
@@ -44,11 +58,25 @@ const initSocketServer = (httpServer) => {
       );
 
       // store ai response
-      await messageModel.create({
+      const aiMessage = await messageModel.create({
         chat: data.chat,
         user: socket.user._id,
         content: response,
         role: "model",
+      });
+
+      // generate response vectors
+      const responseVectors = await generateVectors(response);
+
+      // create response memory
+      await createMemory({
+        vector: responseVectors,
+        messageId: aiMessage._id,
+        metadata: {
+          chatId: data.chat,
+          userId: socket.user._id,
+          message: response,
+        },
       });
 
       socket.emit("ai-response", {
