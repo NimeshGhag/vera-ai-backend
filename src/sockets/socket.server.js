@@ -14,25 +14,18 @@ const initSocketServer = (httpServer) => {
 
   io.on("connection", (socket) => {
     socket.on("ai-message", async (data) => {
-      // store user message
-      const message = await messageModel.create({
-        chat: data.chat,
-        user: socket.user._id,
-        content: data.content,
-        role: "user",
-      });
 
-      // generate vectors
-      const vectors = await generateVectors(data.content);
+      // store user message and generate vectors concurrently
+      const [message, vectors] = await Promise.all([
+        await messageModel.create({
+          chat: data.chat,
+          user: socket.user._id,
+          content: data.content,
+          role: "user",
+        }),
 
-      // query memory
-      const memory = await queryMemory({
-        quaryVector: vectors,
-        limit: 5,
-        metadata: {
-          userId: socket.user._id,
-        },
-      });
+        generateVectors(data.content),
+      ]);
 
       // create memory
       await createMemory({
@@ -45,17 +38,27 @@ const initSocketServer = (httpServer) => {
         },
       });
 
-      // fetch chat history
-      const chatHistory = (
-        await messageModel
+      // query memory and fetch chat history concurrently
+      const [memory, chatHistory] = await Promise.all([
+        queryMemory({
+          quaryVector: vectors,
+          limit: 5,
+          metadata: {
+            userId: socket.user._id,
+          },
+        }),
+
+        messageModel
           .find({
             chat: data.chat,
           })
           .sort({ createdAt: -1 })
           .limit(20)
-          .lean()
-      ).reverse();
+          .lean(),
+      ]);
+      chatHistory.reverse();
 
+      // short term memory
       const stm = chatHistory.map((msg) => {
         return {
           role: msg.role,
@@ -63,6 +66,7 @@ const initSocketServer = (httpServer) => {
         };
       });
 
+      // long term memory
       const ltm = [
         {
           role: "user",
@@ -78,16 +82,23 @@ const initSocketServer = (httpServer) => {
       // generate AI response
       const response = await generateResponse([...ltm, ...stm]);
 
-      // store ai response
-      const aiMessage = await messageModel.create({
+      // emit AI response
+      socket.emit("ai-response", {
         chat: data.chat,
-        user: socket.user._id,
         content: response,
-        role: "model",
       });
 
-      // generate response vectors
-      const responseVectors = await generateVectors(response);
+      // store ai response and generate response vectors concurrently
+      const [aiMessage, responseVectors] = await Promise.all([
+        messageModel.create({
+          chat: data.chat,
+          user: socket.user._id,
+          content: response,
+          role: "model",
+        }),
+
+        generateVectors(response),
+      ]);
 
       // create response memory
       await createMemory({
@@ -99,12 +110,8 @@ const initSocketServer = (httpServer) => {
           message: response,
         },
       });
-
-      socket.emit("ai-response", {
-        chat: data.chat,
-        content: response,
-      });
     });
+
     socket.on("disconnect", () => {
       console.log("Socket Server disconnected");
     });
