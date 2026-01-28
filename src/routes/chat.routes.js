@@ -15,6 +15,6 @@ const {
 router.post("/", authMiddleware, createChatController);
 
 // route for getting all chats of a user
-router.get("/:id", authMiddleware, getAllChatsController);
+router.get("/", authMiddleware, getAllChatsController);
 
 module.exports = router;
